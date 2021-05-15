@@ -11,7 +11,7 @@ Compile with MSBuild.exe or Visual Studio.
 
 If you want to convert only one file, run compiled program with one argument as follows:
 ```
-./PXDConverter.exe pxd_file_location
+./PXDConverter.exe <pxd_file_location>
 ```
 
 If you want to convert all .pxd files found in specified directory, run:
