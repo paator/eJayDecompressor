@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -9,112 +10,156 @@ namespace PXDConverter
 {
     public static class Program
     {
-        static void Main(string[] args)
+        private static void Main(string[] args)
         {
-            if(args.Length != 1)
+            Console.ForegroundColor = ConsoleColor.Blue;
+            Console.WriteLine("___  _ _ ___    ____ ____ __ _ _  _ ____ ____ ___ ____ ____");
+            Console.WriteLine("|--' _X_ |__>   |___ [__] | \\|  \\/  |=== |--<  |  |=== |--<");
+            Console.WriteLine();
+            Console.ForegroundColor = ConsoleColor.Black;
+            
+            
+            if(args.Length < 1)
             {
-                Console.WriteLine("You need 1 argument to run this program:\nPXD file path.\nKeep in mind that temporary raw file will be created in the same dir path.");
+                Console.WriteLine(
+                    "You at least need 1 argument to run this program: PXD file path.\nIf you wish to convert multiple files at once, please " +
+                    "use -all argument.");
+
+                Console.WriteLine();
+                Console.WriteLine("USAGE: ");
+                Console.WriteLine();
+                
+                Console.WriteLine("PXDConverter.exe <pxd_file_location>");
+                Console.WriteLine("PXDConverter.exe -all <folder_location>\n" +
+                                  "Note: If <folder_location> won't be specified, program will try to use the path where program " +
+                                  "was executed.");
+                
                 Environment.Exit(-1);
             }
+            
+            MarshalService.InitializeDll();
 
-            var pxdPath = args[0];
-
-            if(!pxdPath.Contains(".pxd", StringComparison.OrdinalIgnoreCase))
+            var argPath = string.Empty;
+            bool recursiveSearch = false;
+            
+            if (args[0].Equals("-all"))
             {
-                pxdPath += ".pxd";
+                recursiveSearch = true;
+                
+                if (args.Length == 2)
+                {
+                    argPath = args[2];
+                }
+            }
+            else
+            {
+                argPath = args[0];
+                
+                if(!argPath.Contains(".pxd", StringComparison.OrdinalIgnoreCase))
+                {
+                    argPath += ".pxd";
+                }
             }
 
-            var tmpPath = "tmp_f.tmp";
+            Directory.CreateDirectory("converted_wav_files");
+            
+            //buffer used by .dll
+            var tmpPath = Directory.GetCurrentDirectory() + "\\converted_wav_files\\tmp_f.tmp";
 
-            Console.WriteLine("Initializing pxd32d5_d4.dll");
+            if (recursiveSearch)
+                ConvertMultipleFiles(argPath, tmpPath);
+            else
+                ConvertOneFile(argPath, tmpPath);
 
-            //try-catch clauses cause we don't know what exceptions may occur in external pxd32d5_d4.dll methods
-            try
-            {
-                Initialize();
-            }
-            catch
-            {
-                Console.WriteLine("Couldn't find or initialize pxd32d5_d4.dll. Be sure to locate it in the same location as Converter exe file.");
-                Environment.Exit(-2);
-            }
+            MarshalService.CloseDll();
+            
+            Console.WriteLine("Finished.");
+        }
 
-            Console.WriteLine("Creating temporary file (raw data): " + tmpPath);
-
-            try
-            {
-                WavToTemp(pxdPath, tmpPath, 0, 0, 0, 0, 0);
-            }
-            catch
-            {
-                Console.WriteLine("Error during creating temporary file via using external eJay dll method. Are you sure that PXD file is valid?");
-                Environment.Exit(-3);
-            }
-
+        private static void ConvertOneFile(string argPath, string tmpPath)
+        {
+            MarshalService.ConvertWavToRawDataBuffer(argPath, tmpPath);
+            
             Console.WriteLine("Converting raw data to wav format...");
-            RawToWav(pxdPath, tmpPath);
 
-            Console.WriteLine("Closing.");
+            RawToWav(argPath, tmpPath);
+        }
+
+        private static void ConvertMultipleFiles(string argPath, string tmpPath)
+        {
+            Console.WriteLine("Searching for all .pxd files in specified location...");
+
+            if (string.IsNullOrEmpty(argPath))
+                argPath = Directory.GetCurrentDirectory();
+            
+            string[] filePaths = Directory.GetFiles(argPath, "*.pxd", SearchOption.AllDirectories);
+
+            if (filePaths.Length == 0)
+            {
+                Console.WriteLine("Couldn't find any .pxd file!");
+                return;
+            }
+            
+            foreach (var path in filePaths)
+            {
+                Console.WriteLine("Found file: " + path);
+
+                ConvertOneFile(path, tmpPath);
+            }
+        }
+
+        private static void RawToWav(string pxdPath, string tmpPath)
+        {
+            var path = Directory.GetCurrentDirectory() + "\\converted_wav_files\\";
+            var name = Path.GetFileName(pxdPath);
+            
+            var wavPath = path + name.Remove(name.Length - 3) + "wav";
+            FileStream wavStream = null;
+            BinaryWriter wavWriter = null;
+            
             try
             {
-                Close();
+                wavStream = new FileStream(wavPath, FileMode.Create);
+                wavWriter = new BinaryWriter(wavStream);
+                int length = (int) new FileInfo(tmpPath).Length;
+                int riffSize = length + 0x24;
+
+                wavWriter.Write(Encoding.ASCII.GetBytes("RIFF"));
+                wavWriter.Write(riffSize);
+                wavWriter.Write(Encoding.ASCII.GetBytes("WAVEfmt "));
+                wavWriter.Write(16);
+                wavWriter.Write((short) 1); // Encoding: PCM
+                wavWriter.Write((short) 1); // Channels: MONO
+                wavWriter.Write(44100); // Sample rate: 44100
+                wavWriter.Write(88200); // Average bytes per second
+                wavWriter.Write((short) 2); // Block align
+                wavWriter.Write((short) 16); // Bits per sample
+                wavWriter.Write(Encoding.ASCII.GetBytes("data"));
+                wavWriter.Write(length);
+
+                using (var fs = File.OpenRead(tmpPath))
+                {
+                    CopyStream(fs, wavStream);
+                }
+                wavStream.Close();
+                wavWriter.Close();
             }
             catch
             {
-                Console.WriteLine("Couldn't close the pxd32d5_d4.dll!");
-                Environment.Exit(-4);
+                wavStream?.Close();
+                wavWriter?.Close();
+                Console.WriteLine("Couldn't convert raw data to wav. Perhaps .wav provided path is invalid?");
+                File.Delete(wavPath);
             }
-
-            Console.WriteLine("Done!");
-        }
-
-        [DllImport("pxd32d5_d4.dll", EntryPoint = "PInit", CharSet = CharSet.Unicode, CallingConvention = CallingConvention.StdCall)]
-        public static extern int Initialize();
-
-        //Integer parameters are not known, hence the names. They probably function as buffer offsets etc.
-        //To use our paths with external RWavToTemp function, we need to marshal them as char*. String, StringBuilder, char[], byte[] won't work.
-        [DllImport("pxd32d5_d4.dll", EntryPoint = "RWavToTemp", CharSet = CharSet.Unicode, CallingConvention = CallingConvention.StdCall)]
-        public static extern int WavToTemp([MarshalAs(UnmanagedType.LPStr)]String pxdPath, [MarshalAs(UnmanagedType.LPStr)]String tmpPath, int a, int b, int c, int d, int f);
-
-        [DllImport("pxd32d5_d4.dll", EntryPoint = "PClose", CharSet = CharSet.Unicode, CallingConvention = CallingConvention.StdCall)]
-        public static extern int Close();
-
-        public static void RawToWav(string pxdPath, string tmpPath)
-        {
-            string wavPath = pxdPath.Remove(pxdPath.Length - 3) + "wav";
-            FileStream wavStream = new FileStream(wavPath, FileMode.Create);
-            BinaryWriter wavWriter = new BinaryWriter(wavStream);
-
-            int length = (int) new FileInfo(tmpPath).Length;
-            int riffSize = length + 0x24;
-
-            wavWriter.Write(Encoding.ASCII.GetBytes("RIFF"));
-            wavWriter.Write(riffSize);
-            wavWriter.Write(Encoding.ASCII.GetBytes("WAVEfmt "));
-            wavWriter.Write(16);
-            wavWriter.Write((short)1); // Encoding: PCM
-            wavWriter.Write((short)1); // Channels: MONO
-            wavWriter.Write(44100); // Sample rate: 44100
-            wavWriter.Write(88200); // Average bytes per second
-            wavWriter.Write((short)2); // Block align
-            wavWriter.Write((short)16); // Bits per sample
-            wavWriter.Write(Encoding.ASCII.GetBytes("data"));
-            wavWriter.Write(length);
-
-            using(FileStream fs = File.OpenRead(tmpPath))
+            finally
             {
-                CopyStream(fs, wavStream);
+                File.Delete(tmpPath);
             }
-
-            wavStream.Close();
-            wavWriter.Close();
-
-            Console.WriteLine("Created new wav file: " + wavPath);
         }
 
-        public static void CopyStream(Stream input, Stream output)
+        private static void CopyStream(Stream input, Stream output)
         {
-            byte[] buffer = new byte[8 * 1024];
+            byte[] buffer = new byte[0x2000];
             int len;
             while ((len = input.Read(buffer, 0, buffer.Length)) > 0)
             {
@@ -122,7 +167,7 @@ namespace PXDConverter
             }
         }
 
-        public static bool Contains(this string source, string toCheck, StringComparison comp)
+        private static bool Contains(this string source, string toCheck, StringComparison comp)
         {
             return source?.IndexOf(toCheck, comp) >= 0;
         }
