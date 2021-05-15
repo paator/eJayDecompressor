@@ -16,7 +16,7 @@ namespace PXDConverter
             Console.WriteLine("___  _ _ ___    ____ ____ __ _ _  _ ____ ____ ___ ____ ____");
             Console.WriteLine("|--' _X_ |__>   |___ [__] | \\|  \\/  |=== |--<  |  |=== |--<");
             Console.WriteLine();
-            Console.ForegroundColor = ConsoleColor.Black;
+            Console.ResetColor();
             
             
             if(args.Length < 1)

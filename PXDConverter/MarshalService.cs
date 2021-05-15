@@ -43,7 +43,7 @@ namespace PXDConverter
             catch
             {
                 Console.WriteLine("Couldn't close the pxd32d5_d4.dll!");
-                Environment.Exit(-5);
+                Environment.Exit(-3);
             }
         }
 
@@ -56,7 +56,7 @@ namespace PXDConverter
             catch
             {
                 Console.WriteLine("Error during creating temporary buffer file via using external eJay dll method. Are you sure that PXD file is valid?");
-                Environment.Exit(-3);
+                Environment.Exit(-4);
             }
         }
     }
