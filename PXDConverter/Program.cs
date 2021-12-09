@@ -107,8 +107,6 @@ namespace PXDConverter
                 Environment.Exit(-1);
             }
 
-            MarshalService.InitializeDll();
-
             var argPath = string.Empty;
             bool recursiveSearch = false;
 
@@ -144,8 +142,6 @@ namespace PXDConverter
                 ConvertMultipleFiles(argPath);
             else
                 ConvertOneFile(argPath);
-
-            MarshalService.CloseDll();
 
             // for debug: Directory.Delete(tmpPath, true);
 
