@@ -228,7 +228,7 @@ namespace PXDConverter
                 if (part.Length > 0 && records.Count > 0 && record.offset == 0)
                 {
                     // switch to B binary file
-                    part = "b";
+                    part = (part[0] + 1).ToString();
                 }
                 records.Add((record, header));
             }
@@ -242,6 +242,10 @@ namespace PXDConverter
             if (File.Exists($"{Path.GetDirectoryName(descriptorPath)}\\{binFilePrefix}a"))
             {
                 part = "a";
+            }
+            else if (File.Exists($"{Path.GetDirectoryName(descriptorPath)}\\{binFilePrefix}A"))
+            {
+                part = "A";
             }
             else if (File.Exists($"{Path.GetDirectoryName(descriptorPath)}\\{binFilePrefix}"))
             {
@@ -277,14 +281,21 @@ namespace PXDConverter
                 if (part.Length > 0 && files > 0 && record.offset == 0)
                 {
                     // switch to B binary file
-                    part = "b";
+                    part = ((char)(part[0] + 1)).ToString();
                 }
                 string dir;
 
-                if (header.package.Length == 0 && header.type.Length == 0)
+                if (header.package.Length == 0 || header.package == "eJay Musicdirector")
                 {
-                    // use descriptor filename and a type number
-                    dir = $"converted_wav_files\\{binFilePrefix}\\{record.type}";
+                    // use descriptor filename
+                    if (header.type.Length == 0)
+                    {
+                        dir = $"converted_wav_files\\{binFilePrefix}\\{record.type}";
+                    }
+                    else
+                    {
+                        dir = $"converted_wav_files\\{binFilePrefix}\\{header.type}";
+                    }
                 }
                 else
                 {
@@ -340,7 +351,7 @@ namespace PXDConverter
                 if (part.Length > 0 && records.Count > 0 && record.offset == 0)
                 {
                     // switch to B binary file
-                    part = "b";
+                    part = ((char)(part[0] + 1)).ToString();
                 }
                 records.Add((record, header));
             }
