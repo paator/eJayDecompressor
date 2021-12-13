@@ -5,6 +5,7 @@ using System.Runtime;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace PXDConverter
 {
@@ -76,20 +77,32 @@ namespace PXDConverter
             Directory.CreateDirectory("converted_wav_files");
 
             //buffer used by .dll
-            if (!Directory.Exists(TmpPath))
-            {
-                Directory.CreateDirectory(TmpPath);
-            }
+            Directory.CreateDirectory(TmpPath);
 
             if (recursiveSearch)
-                FindMultipleFiles(argPath);
+                FindFilesToDecompress(argPath);
             else
             {
-                // todo check if it is header
-                var lib = new PXD32Library();
-                lib.InitializeDll();
-                ProcessSinglePXDFile(argPath, lib);
-                lib.CloseDll();
+                if (argPath.EndsWith(".pxd"))
+                {
+                    var lib = new PXD32Library();
+                    lib.InitializeDll();
+                    ProcessSinglePXDFile(argPath, lib);
+                    lib.CloseDll();
+                }
+                else if (argPath.EndsWith("inf.bin"))
+                {
+                    var lib = new EjToolLibrary();
+                    ProcessMultiWithBinaryInf(argPath, new EjToolLibrary());
+                }
+                else if (argPath.EndsWith(".inf"))
+                {
+                    ProcessMultiWithTextInf(argPath, new EjToolLibrary());
+                }
+                else
+                {
+                    Console.WriteLine("You should pass only *.PXD, *inf.bin and .inf files");
+                }
             }
 
             Directory.Delete(TmpPath, true);
@@ -99,14 +112,50 @@ namespace PXDConverter
 
         private static void ProcessSinglePXDFile(string argPath, PXD32Library lib)
         {
-            Console.WriteLine($"Converting raw data file {argPath} to wav format...");
+            // it can be already wav file
+            if (ASCIIEncoding.ASCII.GetString(ReadFileFromTo(argPath, 0, 4)) == "RIFF")
+            {
+                string dir = $"{Directory.GetCurrentDirectory()}\\converted_wav_files\\";
+                Directory.CreateDirectory(dir);
+                string filePath = $"{dir}{Path.GetFileNameWithoutExtension(argPath)}.wav";
+                if (!File.Exists(filePath))
+                {
+                    File.Copy(argPath, filePath);
+                }
+            }
+            else
+            {
+                Console.WriteLine($"Converting raw data file {argPath} to wav format...");
 
-            string tmpPath = TmpPath.ToString() + "tmp.wav";
+                string tmpPath = TmpPath.ToString() + "tmp.wav";
 
-            lib.Decompress(argPath, 0, 0, 0, 0, 0, tmpPath);
+                lib.Decompress(argPath, 0, 0, 0, 0, 0, tmpPath);
 
-            // todo rename file from pxd
-            RawToWav(argPath, tmpPath);
+                RawToWav(argPath, tmpPath);
+            }
+        }
+
+        private record PXDHeader(string name, string package, string type);
+
+        private static PXDHeader readPXDFileHeader(string filepath, byte[] bytes)
+        {
+            int p = 4;
+            (p, byte headerSize) = processBytes(bytes, p, 1, b => b[0]);
+            (p, byte[] headerBytes) = readBytes(bytes, p, headerSize);
+            headerBytes = headerBytes[..^2];
+            string[] s = Regex.Split(ASCIIEncoding.ASCII.GetString(headerBytes), "\x0D\x0A");
+            if (s[s.Length - 1].EndsWith(".pxd"))
+            {
+                return new PXDHeader(Path.GetFileNameWithoutExtension(s[s.Length - 1]), s.ElementAtOrDefault(s.Length - 2) ?? string.Empty, string.Empty);
+            }
+            else if (s.Length < 3)
+            {
+                return new PXDHeader(Path.GetFileNameWithoutExtension(s[s.Length - 1]), Path.GetFileName(Path.GetDirectoryName(Path.GetDirectoryName(filepath))!) + " DEMO", Path.GetFileName(Path.GetDirectoryName(filepath)!));
+            }
+            else
+            {
+                return new PXDHeader(s[0] + (s.ElementAtOrDefault(1) ?? string.Empty), $"{s.ElementAtOrDefault(2) ?? string.Empty} {s.ElementAtOrDefault(3) ?? string.Empty}".Trim(), s.ElementAtOrDefault(4) ?? string.Empty);
+            }
         }
 
         private static (int, R) processBytes<R>(byte[] arr, int p, int size, Func<byte[], R> convert)
@@ -128,9 +177,24 @@ namespace PXDConverter
             return sampleRateByte == 0;
         }
 
-        private record PXDRecord(int id, int group, string name, int offset, int lenght, int sampleRate, int type);
+        // sampleRate or maybe samplesCount? not sure
+        private record MultiPXDRecord(int id, int group, string name, int offset, int lenght, int sampleRate, int type);
 
-        private static (int, PXDRecord) readBinaryPXDRecord(byte[] descriptorBytes, int p)
+        private static byte[] ReadFileFromTo(string fileName, int offset, int lenght)
+        {
+            byte[] fileData;
+            using (FileStream fs = File.OpenRead(fileName))
+            {
+                fs.Position = offset;
+                using (BinaryReader binaryReader = new BinaryReader(fs))
+                {
+                    fileData = binaryReader.ReadBytes(lenght);
+                }
+            }
+            return fileData;
+        }
+
+        private static (int, MultiPXDRecord) readBinaryPXDRecord(byte[] descriptorBytes, int p)
         {
             (p, byte[] fileSeparator) = readBytes(descriptorBytes, p, 2);
             (p, byte id) = processBytes(descriptorBytes, p, 1, b => b[0]);
@@ -145,64 +209,94 @@ namespace PXDConverter
             p += 24; // some useless data for us
             //Console.WriteLine($"[{group}:{id}] '{name}'[{nameLenght}] offset: {offset} lenght: {lenght} sampleRateByte: {sampleRateByte}, type2: {type}");
             int sampleRate = sampleRateByte * 151200;
-            return (p, new PXDRecord(id, group, name, offset, lenght, sampleRate, type));
+            return (p, new MultiPXDRecord(id, group, name, offset, lenght, sampleRate, type));
         }
 
         private static void ProcessMultiWithBinaryInf(string descriptorPath, EjToolLibrary lib)
         {
             Console.WriteLine($"Work with descriptor file '{descriptorPath}'");
+            string binFilePrefix = Path.GetFileNameWithoutExtension(descriptorPath)[..^3];
+            string part = binPathPart(descriptorPath, binFilePrefix);
+            byte[] descriptorBytes = File.ReadAllBytes(descriptorPath);
+            int p = 8;
+            List<(MultiPXDRecord, PXDHeader)> records = new List<(MultiPXDRecord, PXDHeader)>();
+            while (!isLastRecord(descriptorBytes, p))
+            {
+                (p, MultiPXDRecord record) = readBinaryPXDRecord(descriptorBytes, p);
+                string binPath = $"{Path.GetDirectoryName(descriptorPath)}\\{binFilePrefix}{part}";
+                PXDHeader header = readPXDFileHeader(binPath, ReadFileFromTo(binPath, record.offset, record.lenght));
+                if (part.Length > 0 && records.Count > 0 && record.offset == 0)
+                {
+                    // switch to B binary file
+                    part = "b";
+                }
+                records.Add((record, header));
+            }
 
+            ProcessRecordsAndHeaders(records, descriptorPath, lib, binFilePrefix);
+        }
+
+        private static string binPathPart(string descriptorPath, string binFilePrefix)
+        {
             string part = "";
-            if (File.Exists($"{Path.GetDirectoryName(descriptorPath)}\\{Path.GetFileNameWithoutExtension(descriptorPath)[..^3]}a"))
+            if (File.Exists($"{Path.GetDirectoryName(descriptorPath)}\\{binFilePrefix}a"))
             {
                 part = "a";
             }
-            else if (File.Exists($"{Path.GetDirectoryName(descriptorPath)}\\{Path.GetFileNameWithoutExtension(descriptorPath)[..^3]}"))
+            else if (File.Exists($"{Path.GetDirectoryName(descriptorPath)}\\{binFilePrefix}"))
             {
                 part = "";
             }
             else
             {
-                Console.WriteLine("This discriptor is not in directory with binary MultiPXD file");
-                return;
+                throw new Exception("This discriptor is not in directory with binary MultiPXD file");
             }
+            return part;
+        }
 
-            byte[] descriptorBytes = File.ReadAllBytes(descriptorPath);
-            int p = 8;
-            List<PXDRecord> records = new List<PXDRecord>();
-            while (!isLastRecord(descriptorBytes, p))
-            {
-                (p, PXDRecord record) = readBinaryPXDRecord(descriptorBytes, p);
-                records.Add(record);
-            }
+        private static string removeBadCharsFromFilename(string filename)
+        {
+            return string.Join("", filename.Trim().Split(Path.GetInvalidFileNameChars())).Trim();
+        }
+
+        private static void ProcessRecordsAndHeaders(List<(MultiPXDRecord, PXDHeader)> records, string descriptorPath, EjToolLibrary lib, string binFilePrefix)
+        {
+            string part = binPathPart(descriptorPath, binFilePrefix);
             int files = 0;
-            HashSet<int> types = new HashSet<int>();
             for (int index = 0; index < records.Count; index++)
             {
-                var item = records.ElementAt(index);
-                types.Add(item.type);
-                PXDRecord? stereo = null;
-                if (index + 1 < records.Count && (records.ElementAt(index + 1).name.Length == 0))
+                var (record, header) = records.ElementAt(index);
+                MultiPXDRecord? stereo = null;
+                if (index + 1 < records.Count && (records.ElementAt(index + 1).Item1.name.Length == 0))
                 {
-                    stereo = records.ElementAt(index + 1);
+                    stereo = records.ElementAt(index + 1).Item1;
                     index++;
                 }
-                string filenameWithoutBadChars = string.Join("", item.name.Trim().Split(Path.GetInvalidFileNameChars()));
-                string binPath = $"{Path.GetDirectoryName(descriptorPath)}\\{Path.GetFileNameWithoutExtension(descriptorPath)[..^3]}{part}";
-                if (part.Length > 0 && files > 0 && (item.offset == 0 || (stereo?.offset ?? -1) == 0))
+                string filenameWithoutBadChars = removeBadCharsFromFilename(record.name);
+                string binPath = $"{Path.GetDirectoryName(descriptorPath)}\\{binFilePrefix}{part}";
+                if (part.Length > 0 && files > 0 && record.offset == 0)
                 {
                     // switch to B binary file
                     part = "b";
                 }
-                string dir = $"{Directory.GetCurrentDirectory()}\\converted_wav_files\\{Path.GetFileNameWithoutExtension(descriptorPath)[..^3]}\\{item.type}";
-                if (!Directory.Exists(dir))
+                string dir;
+
+                if (header.package.Length == 0 && header.type.Length == 0)
                 {
-                    Directory.CreateDirectory(dir);
+                    // use descriptor filename and a type number
+                    dir = $"converted_wav_files\\{binFilePrefix}\\{record.type}";
                 }
+                else
+                {
+                    // we have titles from the headers
+                    dir = $"converted_wav_files\\{header.package}\\{header.type}";
+                }
+                Directory.CreateDirectory(dir);
                 string outputFile = $"{dir}\\{filenameWithoutBadChars}.wav";
+                //Console.WriteLine($"Record: {record} Header: {header} Wav file path: {outputFile} Descriptor {descriptorPath}");
                 if (!File.Exists(outputFile))
                 {
-                    lib.Decompress(binPath, item.offset, item.lenght, stereo?.offset ?? 0, stereo?.lenght ?? 0, item.sampleRate * (stereo != null ? 2 : 1), outputFile);
+                    lib.Decompress(binPath, record.offset, record.lenght, stereo?.offset ?? 0, stereo?.lenght ?? 0, record.sampleRate * (stereo != null ? 2 : 1), outputFile);
                     if (!File.Exists(outputFile))
                     {
                         Console.WriteLine($"Warning: '{outputFile}' is not exists after decompression.");
@@ -210,11 +304,11 @@ namespace PXDConverter
                 }
                 files++;
             }
-            Console.WriteLine($"Totat files extracted: {files}, types: {string.Join(",", types)}");
+            Console.WriteLine($"Totat files extracted: {files}");
         }
 
 
-        private static PXDRecord readTextPXDRecord(string[] descriptorLines, int p)
+        private static MultiPXDRecord readTextPXDRecord(string[] descriptorLines, int p)
         {
             int id = Int32.Parse(descriptorLines[p]);
             int group = Int32.Parse(descriptorLines[p + 1]);
@@ -228,91 +322,35 @@ namespace PXDConverter
             int type = Int32.Parse(descriptorLines[p + 8]);
             //Console.WriteLine($"[{group}:{id}] '{name}' offset: {offset} lenght: {lenght} sampleRateByte: {sampleRateByte}, type2: {type}");
             int sampleRate = sampleRateByte * 151200;
-            return new PXDRecord(id, group, name, offset, lenght, sampleRate, type);
+            return new MultiPXDRecord(id, group, name, offset, lenght, sampleRate, type);
         }
 
         private static void ProcessMultiWithTextInf(string descriptorPath, EjToolLibrary lib)
         {
             Console.WriteLine($"Work with descriptor file '{descriptorPath}'");
-
-
-            string part = "";
-            if (File.Exists($"{Path.GetDirectoryName(descriptorPath)}\\{Path.GetFileNameWithoutExtension(descriptorPath)}a"))
-            {
-                part = "a";
-            }
-            else if (File.Exists($"{Path.GetDirectoryName(descriptorPath)}\\{Path.GetFileNameWithoutExtension(descriptorPath)}"))
-            {
-                part = "";
-            }
-            else
-            {
-                Console.WriteLine("This discriptor is not in directory with binary MultiPXD file");
-                return;
-            }
-
+            string binFilePrefix = Path.GetFileNameWithoutExtension(descriptorPath);
+            string part = binPathPart(descriptorPath, binFilePrefix);
             string[] descriptorLines = File.ReadAllLines(descriptorPath);
-            List<PXDRecord> records = new List<PXDRecord>();
+            List<(MultiPXDRecord, PXDHeader)> records = new List<(MultiPXDRecord, PXDHeader)>();
             for (int i = 14; i < descriptorLines.Length; i += 12)
             {
-                records.Add(readTextPXDRecord(descriptorLines, i));
-            }
-            // stereo data stored not in sequence
-            records.Sort((a, b) => a.id.CompareTo(b.id));
-            int files = 0;
-            HashSet<int> types = new HashSet<int>();
-            for (int index = 0; index < records.Count; index++)
-            {
-                var item = records.ElementAt(index);
-                types.Add(item.type);
-                PXDRecord? stereo = null;
-                if (index + 1 < records.Count && (records.ElementAt(index + 1).name.Length == 0 || records.ElementAt(index + 1).name == item.name[..^1] + 'R'))
-                {
-                    stereo = records.ElementAt(index + 1);
-                    index++;
-                }
-                string filenameWithoutBadChars = string.Join("", item.name.Split(Path.GetInvalidFileNameChars()));
-                if (stereo != null)
-                {
-                    // drop "L" for stereo files
-                    filenameWithoutBadChars = filenameWithoutBadChars[..^1];
-                }
-                string binPath = $"{Path.GetDirectoryName(descriptorPath)}\\{Path.GetFileNameWithoutExtension(descriptorPath)}{part}";
-                if (part.Length > 0 && files > 0 && (item.offset == 0 || (stereo?.offset ?? -1) == 0))
+                MultiPXDRecord record = readTextPXDRecord(descriptorLines, i);
+                string binPath = $"{Path.GetDirectoryName(descriptorPath)}\\{binFilePrefix}{part}";
+                PXDHeader header = readPXDFileHeader(binPath, ReadFileFromTo(binPath, record.offset, record.lenght));
+                if (part.Length > 0 && records.Count > 0 && record.offset == 0)
                 {
                     // switch to B binary file
                     part = "b";
                 }
-                string dir = $"{Directory.GetCurrentDirectory()}\\converted_wav_files\\{Path.GetFileNameWithoutExtension(descriptorPath)}\\{item.type}";
-                if (!Directory.Exists(dir))
-                {
-                    Directory.CreateDirectory(dir);
-                }
-                string outputFile = $"{dir}\\{filenameWithoutBadChars}.wav";
-                if (!File.Exists(outputFile))
-                {
-                    lib.Decompress(binPath, item.offset, item.lenght, stereo?.offset ?? 0, stereo?.lenght ?? 0, item.sampleRate * (stereo != null ? 2 : 1), outputFile);
-                    if (!File.Exists(outputFile))
-                    {
-                        Console.WriteLine($"Warning: '{outputFile}' is not exists after decompression.");
-                    }
-                }
-                files++;
+                records.Add((record, header));
             }
-            Console.WriteLine($"Totat files extracted: {files}, types: {string.Join(",", types)}");
+            // stereo data stored not in sequence
+            records.Sort((a, b) => a.Item1.id.CompareTo(b.Item1.id));
+            ProcessRecordsAndHeaders(records, descriptorPath, lib, binFilePrefix);
         }
 
-        private static void FindMultipleFiles(string argPath)
+        private static void ProcessFiles(string[] pxdFilesPaths, string[] pxdFilesHeaderMultiWithTextInfPaths, string[] pxdFilesHeaderMultiWithBinaryInfPaths)
         {
-            Console.WriteLine("Searching for all .pxd files in specified location...");
-
-            if (string.IsNullOrEmpty(argPath))
-                argPath = Directory.GetCurrentDirectory();
-
-            string[] pxdFilesPaths = Directory.GetFiles(argPath, "*.pxd", SearchOption.AllDirectories);
-            string[] pxdFilesHeaderMultiWithTextInfPaths = Directory.GetFiles(argPath, "*0.inf", SearchOption.AllDirectories);
-            string[] pxdFilesHeaderMultiWithBinaryInfPaths = Directory.GetFiles(argPath, "*inf.bin", SearchOption.AllDirectories);
-
             if (pxdFilesPaths.Length == 0 && pxdFilesHeaderMultiWithTextInfPaths.Length == 0 && pxdFilesHeaderMultiWithBinaryInfPaths.Length == 0)
             {
                 Console.WriteLine("Couldn't find anything to decompress!");
@@ -339,8 +377,15 @@ namespace PXDConverter
                 {
                     foreach (var path in pxdFilesHeaderMultiWithBinaryInfPaths)
                     {
-                        Console.WriteLine($"Process MultiPXD header file (binary): {path}");
-                        ProcessMultiWithBinaryInf(path, lib);
+                        Console.WriteLine($"Process MultiPXD header file (text): {path}");
+                        try
+                        {
+                            ProcessMultiWithBinaryInf(path, lib);
+                        }
+                        catch (Exception e)
+                        {
+                            Console.WriteLine(e.Message);
+                        }
                     }
                 }
 
@@ -349,21 +394,44 @@ namespace PXDConverter
                     foreach (var path in pxdFilesHeaderMultiWithTextInfPaths)
                     {
                         Console.WriteLine($"Process MultiPXD header file (text): {path}");
-                        ProcessMultiWithTextInf(path, lib);
+                        try
+                        {
+                            ProcessMultiWithTextInf(path, lib);
+                        }
+                        catch (Exception e)
+                        {
+                            Console.WriteLine(e.Message);
+                        }
                     }
                 }
             }
         }
+        private static void FindFilesToDecompress(string argPath)
+        {
+            Console.WriteLine("Searching for all .pxd files in specified location...");
+
+            if (string.IsNullOrEmpty(argPath))
+                argPath = Directory.GetCurrentDirectory();
+
+            string[] pxdFilesPaths = Directory.GetFiles(argPath, "*.pxd", SearchOption.AllDirectories);
+            string[] pxdFilesHeaderMultiWithTextInfPaths = Directory.GetFiles(argPath, "*0.inf", SearchOption.AllDirectories);
+            string[] pxdFilesHeaderMultiWithBinaryInfPaths = Directory.GetFiles(argPath, "*inf.bin", SearchOption.AllDirectories);
+
+            ProcessFiles(pxdFilesPaths, pxdFilesHeaderMultiWithTextInfPaths, pxdFilesHeaderMultiWithBinaryInfPaths);
+        }
 
         private static void RawToWav(string pxdPath, string tmpPath)
         {
-            var path = Directory.GetCurrentDirectory() + "\\converted_wav_files\\";
-            var name = Path.GetFileNameWithoutExtension(pxdPath);
+            var path = "converted_wav_files";
+            var header = readPXDFileHeader(pxdPath, File.ReadAllBytes(pxdPath));
+            var wavPath = $"{path}\\{removeBadCharsFromFilename(header.package)}\\{removeBadCharsFromFilename(header.type)}";
+            var wavFullPath = $"{wavPath}\\{removeBadCharsFromFilename(header.name)}.wav";
 
-            var wavPath = path + name + ".wav";
-            if (!File.Exists(wavPath))
+            Directory.CreateDirectory(wavPath);
+
+            if (!File.Exists(wavFullPath))
             {
-                Console.WriteLine("Wav file path: " + wavPath);
+                Console.WriteLine("Wav file path: " + wavFullPath);
                 FileStream? wavStream = null;
                 BinaryWriter? wavWriter = null;
 
@@ -376,7 +444,7 @@ namespace PXDConverter
                     }
                     int riffSize = length + 0x24;
 
-                    wavStream = new FileStream(wavPath, FileMode.Create);
+                    wavStream = new FileStream(wavFullPath, FileMode.Create);
                     wavWriter = new BinaryWriter(wavStream);
                     wavWriter.Write(Encoding.ASCII.GetBytes("RIFF"));
                     wavWriter.Write(riffSize);
@@ -404,7 +472,7 @@ namespace PXDConverter
                     wavStream?.Close();
                     wavWriter?.Close();
                     Console.WriteLine("Couldn't convert raw data to wav. Perhaps .wav provided path is invalid?");
-                    File.Delete(wavPath);
+                    File.Delete(wavFullPath);
                 }
                 finally
                 {
