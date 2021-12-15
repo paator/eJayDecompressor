@@ -553,7 +553,7 @@ namespace PXDConverter
         private static void SclToWav(string sclPath)
         {
             var path = "converted_wav_files";
-            string wavPath = $"{path}\\{Path.GetDirectoryName(Path.GetDirectoryName(sclPath))}\\{Path.GetFileName(Path.GetDirectoryName(sclPath))}";
+            string wavPath = $"{path}\\{Path.GetFileName(Path.GetDirectoryName(Path.GetDirectoryName(sclPath)))}\\{Path.GetFileName(Path.GetDirectoryName(sclPath))}";
             string wavFullPath = $"{wavPath}\\{removeBadCharsFromFilename(Path.GetFileNameWithoutExtension(sclPath))}.wav";
             Debug.WriteLine(wavFullPath);
             if (!File.Exists(wavFullPath))
