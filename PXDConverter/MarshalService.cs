@@ -3,15 +3,9 @@ using System.Runtime.InteropServices;
 
 namespace PXDConverter
 {
-    interface PXDDecompressLibrary
-    {
-        void InitializeDll();
-        void Decompress(string pxdPath, int leftOffset, int leftSize, int rightOffset, int rightSize, int sampleRate, string outputPath);
-        void CloseDll();
-    }
 
     //try-catch clauses are overused cause we don't know what exceptions may occur in external pxd32d5_d4.dll methods
-    public class PXD32Library : PXDDecompressLibrary
+    public class PXD32Library
     {
         [DllImport("pxd32d5_d4.dll", EntryPoint = "PInit", CharSet = CharSet.Unicode, CallingConvention = CallingConvention.StdCall)]
         private static extern int Initialize();
@@ -54,7 +48,7 @@ namespace PXDConverter
             }
         }
 
-        public void Decompress(string pxdPath, int leftOffset, int leftSize, int rightOffset, int rightSize, int sampleRate, string outputPath)
+        public void Decompress(string pxdPath, string outputPath)
         {
             try
             {
@@ -68,7 +62,7 @@ namespace PXDConverter
         }
     }
 
-    public class EjToolLibrary : PXDDecompressLibrary
+    public class EjToolLibrary
     {
 
         [DllImport("eJ_Tool.dll", EntryPoint = "ADecompress", CharSet = CharSet.Unicode, CallingConvention = CallingConvention.StdCall)]
