@@ -131,7 +131,7 @@ namespace PXDConverter
 
                 string tmpPath = TmpPath.ToString() + "tmp.wav";
 
-                lib.Decompress(argPath, 0, 0, 0, 0, 0, tmpPath);
+                lib.Decompress(argPath, tmpPath);
 
                 RawToWav(argPath, tmpPath);
             }
@@ -143,12 +143,12 @@ namespace PXDConverter
         {
             bool isWave = ASCIIEncoding.ASCII.GetString(bytes[0..4]) == "RIFF";
             // rest is useless if it's wav file, but anyway
-            int p = 4;
-            (p, byte headerSize) = processBytes(bytes, p, 1, b => b[0]);
-            (p, byte[] headerBytes) = readBytes(bytes, p, headerSize);
+            int position = 4;
+            (position, byte headerSize) = processBytes(bytes, position, 1, b => b[0]);
+            (position, byte[] headerBytes) = readBytes(bytes, position, headerSize);
             headerBytes = headerBytes.TakeWhile(c => c != 0).ToArray();
-            p += 1;
-            (p, int samples) = processBytes(bytes, p, 4, b => BitConverter.ToInt32(b));
+            position += 1;
+            (position, int samples) = processBytes(bytes, position, 4, b => BitConverter.ToInt32(b));
             string[] s = Regex.Split(ASCIIEncoding.ASCII.GetString(headerBytes), "\x0D\x0A");
             if (s[s.Length - 1].EndsWith(".pxd"))
             {
@@ -164,22 +164,22 @@ namespace PXDConverter
             }
         }
 
-        private static (int, R) processBytes<R>(byte[] arr, int p, int size, Func<byte[], R> convert)
+        private static (int, TResult) processBytes<TResult>(byte[] arr, int position, int size, Func<byte[], TResult> convert)
         {
-            R res = convert(arr[p..(p + size)]);
-            return (p + size, res);
+            TResult res = convert(arr[position..(position + size)]);
+            return (position + size, res);
         }
 
 
-        private static (int, byte[]) readBytes(byte[] arr, int p, int size)
+        private static (int, byte[]) readBytes(byte[] arr, int position, int size)
         {
-            return (p + size, arr[p..(p + size)]);
+            return (position + size, arr[position..(position + size)]);
         }
 
-        private static bool isLastRecord(byte[] descriptorBytes, int p)
+        private static bool isLastRecord(byte[] descriptorBytes, int position)
         {
-            p += 8;
-            (p, short sampleRateByte) = processBytes(descriptorBytes, p, 2, b => BitConverter.ToInt16(b));
+            position += 8;
+            (position, short sampleRateByte) = processBytes(descriptorBytes, position, 2, b => BitConverter.ToInt16(b));
             return sampleRateByte == 0;
         }
 
@@ -200,28 +200,28 @@ namespace PXDConverter
             return fileData;
         }
 
-        private static (int, MultiPXDRecord) readBinaryPXDRecord(byte[] descriptorBytes, int p)
+        private static (int, MultiPXDRecord) readBinaryPXDRecord(byte[] descriptorBytes, int position)
         {
-            (p, byte[] fileSeparator) = readBytes(descriptorBytes, p, 2);
-            (p, byte id) = processBytes(descriptorBytes, p, 1, b => b[0]);
-            (p, byte group) = processBytes(descriptorBytes, p, 1, b => b[0]);
-            p += 2; // serarator
-            (p, short nameLenght) = processBytes(descriptorBytes, p, 2, b => BitConverter.ToInt16(b));
-            (p, string name) = processBytes(descriptorBytes, p, nameLenght, b => ASCIIEncoding.UTF8.GetString(b));
-            (p, short sampleRateByte) = processBytes(descriptorBytes, p, 2, b => BitConverter.ToInt16(b));
-            (p, short type) = processBytes(descriptorBytes, p, 2, b => BitConverter.ToInt16(b));
-            (p, int offset) = processBytes(descriptorBytes, p, 4, b => BitConverter.ToInt32(b));
-            (p, int lenght) = processBytes(descriptorBytes, p, 4, b => BitConverter.ToInt32(b));
+            (position, byte[] fileSeparator) = readBytes(descriptorBytes, position, 2);
+            (position, byte id) = processBytes(descriptorBytes, position, 1, b => b[0]);
+            (position, byte group) = processBytes(descriptorBytes, position, 1, b => b[0]);
+            position += 2; // serarator
+            (position, short nameLenght) = processBytes(descriptorBytes, position, 2, b => BitConverter.ToInt16(b));
+            (position, string name) = processBytes(descriptorBytes, position, nameLenght, ASCIIEncoding.UTF8.GetString);
+            (position, short sampleRateByte) = processBytes(descriptorBytes, position, 2, b => BitConverter.ToInt16(b));
+            (position, short type) = processBytes(descriptorBytes, position, 2, b => BitConverter.ToInt16(b));
+            (position, int offset) = processBytes(descriptorBytes, position, 4, b => BitConverter.ToInt32(b));
+            (position, int lenght) = processBytes(descriptorBytes, position, 4, b => BitConverter.ToInt32(b));
             // 1 for first in stereo
-            (p, short wtf1) = processBytes(descriptorBytes, p, 2, b => BitConverter.ToInt16(b));
-            (p, short wtf2) = processBytes(descriptorBytes, p, 2, b => BitConverter.ToInt16(b));
-            (p, int channels1) = processBytes(descriptorBytes, p, 4, b => BitConverter.ToInt32(b));
-            (p, short wtf3) = processBytes(descriptorBytes, p, 2, b => BitConverter.ToInt16(b));
-            (p, int wtf4) = processBytes(descriptorBytes, p, 4, b => BitConverter.ToInt32(b));
-            (p, short channels2) = processBytes(descriptorBytes, p, 2, b => BitConverter.ToInt16(b));
-            p += 8; // it always 00 00 00 00 00 00 FF FF
+            (position, short wtf1) = processBytes(descriptorBytes, position, 2, b => BitConverter.ToInt16(b));
+            (position, short wtf2) = processBytes(descriptorBytes, position, 2, b => BitConverter.ToInt16(b));
+            (position, int channels1) = processBytes(descriptorBytes, position, 4, b => BitConverter.ToInt32(b));
+            (position, short wtf3) = processBytes(descriptorBytes, position, 2, b => BitConverter.ToInt16(b));
+            (position, int wtf4) = processBytes(descriptorBytes, position, 4, b => BitConverter.ToInt32(b));
+            (position, short channels2) = processBytes(descriptorBytes, position, 2, b => BitConverter.ToInt16(b));
+            position += 8; // it always 00 00 00 00 00 00 FF FF
             Debug.WriteLine($"[{group}:{id}] '{name}'[{nameLenght}] offset: {offset} lenght: {lenght} sampleRateByte: {sampleRateByte}, type2: {type}");
-            return (p, new MultiPXDRecord(id, group, name, offset, lenght, sampleRateByte, type));
+            return (position, new MultiPXDRecord(id, group, name, offset, lenght, sampleRateByte, type));
         }
 
         private static void ProcessMultiWithBinaryInf(string descriptorPath, EjToolLibrary lib)
@@ -230,11 +230,11 @@ namespace PXDConverter
             string binFilePrefix = Path.GetFileNameWithoutExtension(descriptorPath)[..^3];
             string part = binPathPart(descriptorPath, binFilePrefix);
             byte[] descriptorBytes = File.ReadAllBytes(descriptorPath);
-            int p = 8;
+            int position = 8;
             List<(MultiPXDRecord, PXDHeader, string)> records = new List<(MultiPXDRecord, PXDHeader, string)>();
-            while (!isLastRecord(descriptorBytes, p))
+            while (!isLastRecord(descriptorBytes, position))
             {
-                (p, MultiPXDRecord record) = readBinaryPXDRecord(descriptorBytes, p);
+                (position, MultiPXDRecord record) = readBinaryPXDRecord(descriptorBytes, position);
                 string binPath = $"{Path.GetDirectoryName(descriptorPath)}\\{binFilePrefix}{part}";
                 if (record.lenght != 0)
                 {
@@ -353,18 +353,18 @@ namespace PXDConverter
         }
 
 
-        private static MultiPXDRecord readTextPXDRecord(string[] descriptorLines, int p)
+        private static MultiPXDRecord readTextPXDRecord(string[] descriptorLines, int position)
         {
-            int id = Int32.Parse(descriptorLines[p]);
-            int group = Int32.Parse(descriptorLines[p + 1]);
-            string pxdFilename = descriptorLines[p + 2][1..^1]; // remove ""
-            int offset = Int32.Parse(descriptorLines[p + 3]);
-            int lenght = Int32.Parse(descriptorLines[p + 4]);
-            string nameLine1 = descriptorLines[p + 5][1..^1]; // remove ""
-            string nameLine2 = descriptorLines[p + 6][1..^1]; // remove ""
+            int id = Int32.Parse(descriptorLines[position]);
+            int group = Int32.Parse(descriptorLines[position + 1]);
+            string pxdFilename = descriptorLines[position + 2][1..^1]; // remove ""
+            int offset = Int32.Parse(descriptorLines[position + 3]);
+            int lenght = Int32.Parse(descriptorLines[position + 4]);
+            string nameLine1 = descriptorLines[position + 5][1..^1]; // remove ""
+            string nameLine2 = descriptorLines[position + 6][1..^1]; // remove ""
             string name = nameLine1 + nameLine2;
-            int sampleRateByte = Int32.Parse(descriptorLines[p + 7]);
-            int type = Int32.Parse(descriptorLines[p + 8]);
+            int sampleRateByte = Int32.Parse(descriptorLines[position + 7]);
+            int type = Int32.Parse(descriptorLines[position + 8]);
             Debug.WriteLine($"[{group}:{id}] '{name}' offset: {offset} lenght: {lenght} sampleRateByte: {sampleRateByte}, type2: {type}");
             return new MultiPXDRecord(id, group, name, offset, lenght, sampleRateByte, type);
         }
