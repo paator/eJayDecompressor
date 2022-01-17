@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
 VisualStudioVersion = 16.0.30406.217
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PXDConverter", "PXDConverter\PXDConverter.csproj", "{4399E26E-4D86-4CAE-BA17-236AC0B26339}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PXDConverter", "PXDConverter\PXDConverter.csproj", "{5C0E70F7-C5D5-41F8-811E-0DA506769850}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -11,10 +11,10 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{4399E26E-4D86-4CAE-BA17-236AC0B26339}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{4399E26E-4D86-4CAE-BA17-236AC0B26339}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{4399E26E-4D86-4CAE-BA17-236AC0B26339}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{4399E26E-4D86-4CAE-BA17-236AC0B26339}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5C0E70F7-C5D5-41F8-811E-0DA506769850}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5C0E70F7-C5D5-41F8-811E-0DA506769850}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5C0E70F7-C5D5-41F8-811E-0DA506769850}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5C0E70F7-C5D5-41F8-811E-0DA506769850}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

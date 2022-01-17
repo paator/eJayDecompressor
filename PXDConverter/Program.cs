@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Runtime;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -40,7 +42,7 @@ namespace PXDConverter
             if (args.Length < 1)
             {
                 Console.WriteLine(
-                    "You at least need 1 argument to run this program: PXD file path.\nIf you wish to convert multiple files at once, please " +
+                    "You need at least need 1 argument to run this program: PXD file path.\nIf you wish to convert multiple files at once, please " +
                     "use -all argument.");
 
                 Console.WriteLine();
@@ -136,7 +138,7 @@ namespace PXDConverter
                 RawToWav(argPath, tmpPath);
             }
         }
-
+        
         private record PXDHeader(string name, string package, string type, int samples, bool isWave);
 
         private static PXDHeader readPXDFileHeader(string filepath, byte[] bytes)
