@@ -9,6 +9,8 @@ Converter calls pxd32d5_d4.dll external methods used for unpacking PXD to raw bi
 Application uses .NET 6.0. It also uses pxd32d5_d4.dll (old single .pxd files) and eJ_Tool.dll (for MultiPXD packages) which needs to be located in the same folder as compiled .exe. You can find .dll file inside of your eJay installation directories.
 Compile with MSBuild.exe or Visual Studio.
 
+This repository assumes you obtained pxd32d5_d4.dll or eJ_Tool.dll in legal way by buying the original eJay software. Don't ask for putting these files into the repository - it won't happen.
+
 If you want to convert only one file, run compiled program with one argument as follows:
 ```
 ./PXDConverter.exe <pxd_file_location>
