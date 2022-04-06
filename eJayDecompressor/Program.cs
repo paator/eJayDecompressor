@@ -11,10 +11,11 @@ public static class Program
     private static void Main(string[] args)
     {
         Console.ForegroundColor = ConsoleColor.Blue;
-        Console.WriteLine("___  _ _ ___    ____ ____ __ _ _  _ ____ ____ ___ ____ ____");
-        Console.WriteLine("|--' _X_ |__>   |___ [__] | \\|  \\/  |=== |--<  |  |=== |--<");
-        Console.WriteLine();
-        Console.ResetColor();
+        Console.WriteLine("         _           ___                                                 _   ____");
+        Console.WriteLine("  ___ _ | |__ _ _  _|   \\ ___ __ ___ _ __  _ __ _ _ ___ ______ ___ _ _  / | |__ /");
+        Console.WriteLine(" / -_) || / _` | || | |) / -_) _/ _ \\ '  \\| '_ \\ '_/ -_|_-<_-</ _ \\ '_| | |_ |_ \\");
+        Console.WriteLine(" \\___|\\__/\\__,_|\\_, |___/\\___\\__\\___/_|_|_| .__/_| \\___/__/__/\\___/_|   |_(_)___/");
+        Console.WriteLine("                |__/                      |_|                                    ");
 
 
         if (args.Length < 1)
@@ -27,8 +28,8 @@ public static class Program
             Console.WriteLine("USAGE: ");
             Console.WriteLine();
 
-            Console.WriteLine("eJayDecompressor.exe <pxd_file_location>");
-            Console.WriteLine("eJayDecompressor.exe -all <folder_location>\n" +
+            Console.WriteLine("./eJayDecompressor.exe <pxd_file_location>");
+            Console.WriteLine("./eJayDecompressor.exe -all <folder_location>\n" +
                               "Note: If <folder_location> won't be specified, program will try to use the path where program " +
                               "was executed.");
 
