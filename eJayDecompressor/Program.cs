@@ -16,8 +16,8 @@ public static class Program
         Console.WriteLine(" / -_) || / _` | || | |) / -_) _/ _ \\ '  \\| '_ \\ '_/ -_|_-<_-</ _ \\ '_| | |_ |_ \\");
         Console.WriteLine(" \\___|\\__/\\__,_|\\_, |___/\\___\\__\\___/_|_|_| .__/_| \\___/__/__/\\___/_|   |_(_)___/");
         Console.WriteLine("                |__/                      |_|                                    ");
-
-
+        Console.ResetColor();
+        
         if (args.Length < 1)
         {
             Console.WriteLine(
