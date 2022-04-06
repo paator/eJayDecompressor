@@ -366,7 +366,7 @@ public static class Program
             files++;
         }
 
-        Console.WriteLine($"Totat files extracted: {files}");
+        Console.WriteLine($"Total files extracted: {files}");
     }
 
 
@@ -543,7 +543,7 @@ public static class Program
             var length = (int) new FileInfo(tmpPath).Length;
             if (length == 0)
             {
-                throw new Exception("raw wav file is empty, looks like file convertation was failed");
+                throw new Exception("raw wav file is empty, looks like file conversion was failed");
             }
 
             var riffSize = length + 0x24;
