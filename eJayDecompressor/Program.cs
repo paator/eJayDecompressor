@@ -50,6 +50,8 @@ public static class Program
             argPath = args[0];
         }
 
+        argPath = argPath.Trim();
+
         Directory.CreateDirectory("converted_wav_files");
 
         //buffer used by .dll
@@ -294,6 +296,8 @@ public static class Program
             .Sort((a, b) => (a.Item1.group, a.Item1.id)
                 .CompareTo((b.Item1.group, b.Item1.id)));
 
+        var outputFiles = new HashSet<string>();
+
         var files = 0;
         for (var index = 0; index < records.Count; index++)
         {
@@ -356,6 +360,14 @@ public static class Program
 
             Directory.CreateDirectory(dir);
             var outputFile = $"{dir}\\{filenameWithoutBadChars}.wav";
+
+            for (var i = 0; outputFiles.Contains(outputFile.ToLower()) || i > 10; i++)
+            {
+                outputFile = outputFile[..^4] + "_.wav";
+            }
+
+            outputFiles.Add(outputFile.ToLower());
+
             if (!File.Exists(outputFile))
             {
                 if (header.isWave)
