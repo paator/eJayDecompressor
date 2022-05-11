@@ -163,11 +163,25 @@ public static class Program
         return (position + size, arr[position..(position + size)]);
     }
 
-    private static bool IsLastRecord(byte[] descriptorBytes, int position)
+    private static bool IsValidRecord(byte[] descriptorBytes, int position)
     {
-        position += 8;
-        var (_, sampleRateByte) = ProcessBytes(descriptorBytes, position, 2, b => BitConverter.ToInt16(b));
-        return sampleRateByte == 0;
+        // this method makes an assumption that every valid record
+        // is going to end with 00 00 00 00 00 00 FF FF
+        // (or simply 0 for some empty records).
+        // the records that don't are just leftover (or badly parsed) trash at the end of the file.
+        // the assumption holds true for dance60inf.bin, but may not be valid for other files
+
+        // as the name field is variable length,
+        // we first need to find its length to know how many bytes to skip
+        position += 6; // position -> nameLength
+        if (position > descriptorBytes.Length) { return false; }
+        (position, var nameLength) = ProcessBytes(descriptorBytes, position, 2, b => BitConverter.ToInt16(b));
+
+        position += nameLength + 0x1C; // position -> magic
+        if (position > descriptorBytes.Length) { return false; }
+        (_, var magic) = ProcessBytes(descriptorBytes, position, 8, b => BitConverter.ToUInt64(b));
+
+        return magic == 0xFFFF000000000000 || magic == 0;
     }
 
     // sampleRate or maybe samplesCount? not sure
@@ -187,14 +201,14 @@ public static class Program
 
     private static (int, MultiPxdRecord) ReadBinaryPxdRecord(byte[] descriptorBytes, int position)
     {
-        //discards are used for stuff that have unknown purpose
+        // discards are used for stuff that have unknown purpose
 
         (position, var fileSeparator) = ReadBytes(descriptorBytes, position, 2);
         (position, var id) = ProcessBytes(descriptorBytes, position, 1, b => b[0]);
         (position, var group) = ProcessBytes(descriptorBytes, position, 1, b => b[0]);
         position += 2; // separator
         (position, var nameLenght) = ProcessBytes(descriptorBytes, position, 2, b => BitConverter.ToInt16(b));
-        (position, var name) = ProcessBytes(descriptorBytes, position, nameLenght, Encoding.UTF8.GetString);
+        (position, var name) = ProcessBytes(descriptorBytes, position, nameLenght, Encoding.ASCII.GetString);
         (position, var sampleRateByte) = ProcessBytes(descriptorBytes, position, 2, b => BitConverter.ToInt16(b));
         (position, var type) = ProcessBytes(descriptorBytes, position, 2, b => BitConverter.ToInt16(b));
         (position, var offset) = ProcessBytes(descriptorBytes, position, 4, b => BitConverter.ToInt32(b));
@@ -206,7 +220,7 @@ public static class Program
         (position, _) = ProcessBytes(descriptorBytes, position, 2, b => BitConverter.ToInt16(b));
         (position, _) = ProcessBytes(descriptorBytes, position, 4, b => BitConverter.ToInt32(b));
         (position, var channels2) = ProcessBytes(descriptorBytes, position, 2, b => BitConverter.ToInt16(b));
-        position += 8; // it always 00 00 00 00 00 00 FF FF
+        (position, var magic) = ProcessBytes(descriptorBytes, position, 8, b => BitConverter.ToUInt64(b));
 
         Debug.WriteLine(
             $"[{group}:{id}] '{name}'[{nameLenght}] offset: {offset} lenght: {lenght} sampleRateByte: {sampleRateByte}, type2: {type}");
@@ -223,13 +237,14 @@ public static class Program
         var position = 8;
         var records = new List<(MultiPxdRecord, PxdHeader, string)>();
 
-        while (!IsLastRecord(descriptorBytes, position))
+        while (IsValidRecord(descriptorBytes, position))
         {
             (position, MultiPxdRecord record) = ReadBinaryPxdRecord(descriptorBytes, position);
-            var binPath = $"{Path.GetDirectoryName(descriptorPath)}\\{binFilePrefix}{part}";
 
             if (record.lenght != 0)
             {
+                var binPath = $"{Path.GetDirectoryName(descriptorPath)}\\{binFilePrefix}{part}";
+
                 var header =
                     ReadPxdFileHeader(binPath, ReadFileFromTo(binPath, record.offset, record.lenght));
                 if (part.Length > 0 && records.Count > 0 && record.offset == 0)
