@@ -11,26 +11,23 @@ public static class Program
     private static void Main(string[] args)
     {
         Console.ForegroundColor = ConsoleColor.Blue;
-        Console.WriteLine("         _           ___                                                 _   ____");
-        Console.WriteLine("  ___ _ | |__ _ _  _|   \\ ___ __ ___ _ __  _ __ _ _ ___ ______ ___ _ _  / | |__ /");
-        Console.WriteLine(" / -_) || / _` | || | |) / -_) _/ _ \\ '  \\| '_ \\ '_/ -_|_-<_-</ _ \\ '_| | |_ |_ \\");
-        Console.WriteLine(" \\___|\\__/\\__,_|\\_, |___/\\___\\__\\___/_|_|_| .__/_| \\___/__/__/\\___/_|   |_(_)___/");
-        Console.WriteLine("                |__/                      |_|                                    ");
+        Console.WriteLine("         _           ___");
+        Console.WriteLine("  ___ _ | |__ _ _  _|   \\ ___ __ ___ _ __  _ __ _ _ ___ ______ ___ _ _");
+        Console.WriteLine(" / -_) || / _` | || | |) / -_) _/ _ \\ '  \\| '_ \\ '_/ -_|_-<_-</ _ \\ '_|");
+        Console.WriteLine(" \\___|\\__/\\__,_|\\_, |___/\\___\\__\\___/_|_|_| .__/_| \\___/__/__/\\___/_|");
+        Console.WriteLine("                |__/                      |_|\n");
         Console.ResetColor();
         
         if (args.Length < 1)
         {
-            Console.WriteLine(
-                "You need at least need 1 argument to run this program: PXD file path.\nIf you wish to convert multiple files at once, please " +
-                "use -all argument.");
+            Console.WriteLine("You need at least 1 argument to run this program: PXD file path.");
+            Console.WriteLine("If you wish to convert multiple files at once, please use -all argument.");
 
-            Console.WriteLine();
-            Console.WriteLine("USAGE: ");
-            Console.WriteLine();
+            Console.WriteLine("\nUSAGE:\n");
 
             Console.WriteLine("./eJayDecompressor.exe <pxd_file_location>");
             Console.WriteLine("./eJayDecompressor.exe -all <folder_location>\n" +
-                              "Note: If <folder_location> won't be specified, program will try to use the path where program " +
+                              "Note: If <folder_location> is not specified, the program will try to use the path where the program " +
                               "was executed.");
 
             Environment.Exit(-1);
@@ -52,6 +49,8 @@ public static class Program
         {
             argPath = args[0];
         }
+
+        argPath = argPath.Trim();
 
         Directory.CreateDirectory("converted_wav_files");
 
@@ -163,42 +162,56 @@ public static class Program
         return (position + size, arr[position..(position + size)]);
     }
 
-    private static bool IsLastRecord(byte[] descriptorBytes, int position)
+    private static bool IsValidRecord(byte[] descriptorBytes, int position)
     {
-        position += 8;
-        var (_, sampleRateByte) = ProcessBytes(descriptorBytes, position, 2, b => BitConverter.ToInt16(b));
-        return sampleRateByte == 0;
+        // this method makes an assumption that every valid record
+        // is going to end with 00 00 00 00 00 00 FF FF
+        // (or simply 0 for some empty records).
+        // the records that don't are just leftover (or badly parsed) trash at the end of the file.
+        // the assumption holds true for dance60inf.bin, but may not be valid for other files
+
+        // as the name field is variable length,
+        // we first need to find its length to know how many bytes to skip
+        position += 6; // position -> nameLength
+        if (position > descriptorBytes.Length) { return false; }
+        (position, var nameLength) = ProcessBytes(descriptorBytes, position, 2, b => BitConverter.ToInt16(b));
+
+        position += nameLength + 0x1C; // position -> magic
+        if (position > descriptorBytes.Length) { return false; }
+        (_, var magic) = ProcessBytes(descriptorBytes, position, 8, b => BitConverter.ToUInt64(b));
+
+        return magic == 0xFFFF000000000000 || magic == 0;
     }
 
     // sampleRate or maybe samplesCount? not sure
-    private record MultiPxdRecord(int id, int group, string name, int offset, int lenght, int sampleRateByte,
+    private record MultiPxdRecord(int id, int group, string name, int offset, int length, int sampleRateByte,
         int type);
 
-    private static byte[] ReadFileFromTo(string fileName, int offset, int lenght)
+    private static byte[] ReadFileFromTo(string fileName, int offset, int length)
     {
         using var fs = File.OpenRead(fileName);
         fs.Position = offset;
 
         using var binaryReader = new BinaryReader(fs);
-        var fileData = binaryReader.ReadBytes(lenght);
+        var fileData = binaryReader.ReadBytes(length);
 
         return fileData;
     }
 
     private static (int, MultiPxdRecord) ReadBinaryPxdRecord(byte[] descriptorBytes, int position)
     {
-        //discards are used for stuff that have unknown purpose
+        // discards are used for stuff that have unknown purpose
 
         (position, var fileSeparator) = ReadBytes(descriptorBytes, position, 2);
         (position, var id) = ProcessBytes(descriptorBytes, position, 1, b => b[0]);
         (position, var group) = ProcessBytes(descriptorBytes, position, 1, b => b[0]);
         position += 2; // separator
-        (position, var nameLenght) = ProcessBytes(descriptorBytes, position, 2, b => BitConverter.ToInt16(b));
-        (position, var name) = ProcessBytes(descriptorBytes, position, nameLenght, Encoding.UTF8.GetString);
+        (position, var nameLength) = ProcessBytes(descriptorBytes, position, 2, b => BitConverter.ToInt16(b));
+        (position, var name) = ProcessBytes(descriptorBytes, position, nameLength, Encoding.ASCII.GetString);
         (position, var sampleRateByte) = ProcessBytes(descriptorBytes, position, 2, b => BitConverter.ToInt16(b));
         (position, var type) = ProcessBytes(descriptorBytes, position, 2, b => BitConverter.ToInt16(b));
         (position, var offset) = ProcessBytes(descriptorBytes, position, 4, b => BitConverter.ToInt32(b));
-        (position, var lenght) = ProcessBytes(descriptorBytes, position, 4, b => BitConverter.ToInt32(b));
+        (position, var length) = ProcessBytes(descriptorBytes, position, 4, b => BitConverter.ToInt32(b));
         // 1 for first in stereo
         (position, _) = ProcessBytes(descriptorBytes, position, 2, b => BitConverter.ToInt16(b));
         (position, _) = ProcessBytes(descriptorBytes, position, 2, b => BitConverter.ToInt16(b));
@@ -206,16 +219,16 @@ public static class Program
         (position, _) = ProcessBytes(descriptorBytes, position, 2, b => BitConverter.ToInt16(b));
         (position, _) = ProcessBytes(descriptorBytes, position, 4, b => BitConverter.ToInt32(b));
         (position, var channels2) = ProcessBytes(descriptorBytes, position, 2, b => BitConverter.ToInt16(b));
-        position += 8; // it always 00 00 00 00 00 00 FF FF
+        (position, var magic) = ProcessBytes(descriptorBytes, position, 8, b => BitConverter.ToUInt64(b));
 
         Debug.WriteLine(
-            $"[{group}:{id}] '{name}'[{nameLenght}] offset: {offset} lenght: {lenght} sampleRateByte: {sampleRateByte}, type2: {type}");
-        return (position, new MultiPxdRecord(id, group, name, offset, lenght, sampleRateByte, type));
+            $"[{group}:{id}] '{name}'[{nameLength}] offset: {offset} length: {length} sampleRateByte: {sampleRateByte}, type2: {type}");
+        return (position, new MultiPxdRecord(id, group, name, offset, length, sampleRateByte, type));
     }
 
     private static void ProcessMultiWithBinaryInf(string descriptorPath, EjToolLibrary lib)
     {
-        Console.WriteLine($"Work with descriptor file '{descriptorPath}'");
+        Console.WriteLine($"Working with descriptor file '{descriptorPath}'");
 
         var binFilePrefix = Path.GetFileNameWithoutExtension(descriptorPath)[..^3];
         var part = BinPathPart(descriptorPath, binFilePrefix);
@@ -223,15 +236,16 @@ public static class Program
         var position = 8;
         var records = new List<(MultiPxdRecord, PxdHeader, string)>();
 
-        while (!IsLastRecord(descriptorBytes, position))
+        while (IsValidRecord(descriptorBytes, position))
         {
             (position, MultiPxdRecord record) = ReadBinaryPxdRecord(descriptorBytes, position);
-            var binPath = $"{Path.GetDirectoryName(descriptorPath)}\\{binFilePrefix}{part}";
 
-            if (record.lenght != 0)
+            if (record.length != 0)
             {
+                var binPath = $"{Path.GetDirectoryName(descriptorPath)}\\{binFilePrefix}{part}";
+
                 var header =
-                    ReadPxdFileHeader(binPath, ReadFileFromTo(binPath, record.offset, record.lenght));
+                    ReadPxdFileHeader(binPath, ReadFileFromTo(binPath, record.offset, record.length));
                 if (part.Length > 0 && records.Count > 0 && record.offset == 0)
                 {
                     // switch to B binary file
@@ -264,7 +278,7 @@ public static class Program
         }
         else
         {
-            throw new Exception("This descriptor is not in directory with binary MultiPXD file");
+            throw new Exception("The descriptor is not in a directory containing binary MultiPXD file");
         }
 
         return part;
@@ -281,6 +295,8 @@ public static class Program
         records
             .Sort((a, b) => (a.Item1.group, a.Item1.id)
                 .CompareTo((b.Item1.group, b.Item1.id)));
+
+        var outputFiles = new HashSet<string>();
 
         var files = 0;
         for (var index = 0; index < records.Count; index++)
@@ -344,22 +360,30 @@ public static class Program
 
             Directory.CreateDirectory(dir);
             var outputFile = $"{dir}\\{filenameWithoutBadChars}.wav";
+
+            for (var i = 0; outputFiles.Contains(outputFile.ToLower()) || i > 10; i++)
+            {
+                outputFile = outputFile[..^4] + "_.wav";
+            }
+
+            outputFiles.Add(outputFile.ToLower());
+
             if (!File.Exists(outputFile))
             {
                 if (header.isWave)
                 {
-                    File.WriteAllBytes(outputFile, ReadFileFromTo(binPath, record.offset, record.lenght));
+                    File.WriteAllBytes(outputFile, ReadFileFromTo(binPath, record.offset, record.length));
                 }
                 else
                 {
-                    EjToolLibrary.Decompress(binPath, record.offset, record.lenght, stereo?.offset ?? 0,
-                        stereo?.lenght ?? 0,
+                    EjToolLibrary.Decompress(binPath, record.offset, record.length, stereo?.offset ?? 0,
+                        stereo?.length ?? 0,
                         2 * header.samples * (stereo != null ? 2 : 1), outputFile);
                 }
 
                 if (!File.Exists(outputFile))
                 {
-                    Console.WriteLine($"Warning: '{outputFile}' is not exists after decompression");
+                    Console.WriteLine($"Warning: '{outputFile}' does not exist after decompression");
                 }
             }
 
@@ -376,7 +400,7 @@ public static class Program
         var group = int.Parse(descriptorLines[position + 1]);
         var pxdFilename = descriptorLines[position + 2][1..^1]; // remove ""
         var offset = int.Parse(descriptorLines[position + 3]);
-        var lenght = int.Parse(descriptorLines[position + 4]);
+        var length = int.Parse(descriptorLines[position + 4]);
         var nameLine1 = descriptorLines[position + 5][1..^1]; // remove ""
         var nameLine2 = descriptorLines[position + 6][1..^1]; // remove ""
         var name = nameLine1 + nameLine2;
@@ -384,13 +408,13 @@ public static class Program
         var type = int.Parse(descriptorLines[position + 8]);
 
         Debug.WriteLine(
-            $"[{group}:{id}] '{name}' offset: {offset} lenght: {lenght} sampleRateByte: {sampleRateByte}, type2: {type}");
-        return new MultiPxdRecord(id, group, name, offset, lenght, sampleRateByte, type);
+            $"[{group}:{id}] '{name}' offset: {offset} length: {length} sampleRateByte: {sampleRateByte}, type2: {type}");
+        return new MultiPxdRecord(id, group, name, offset, length, sampleRateByte, type);
     }
 
     private static void ProcessMultiWithTextInf(string descriptorPath, EjToolLibrary lib)
     {
-        Console.WriteLine($"Work with descriptor file '{descriptorPath}'");
+        Console.WriteLine($"Working with descriptor file '{descriptorPath}'");
         var binFilePrefix = Path.GetFileNameWithoutExtension(descriptorPath);
         var part = BinPathPart(descriptorPath, binFilePrefix);
         var descriptorLines = File.ReadAllLines(descriptorPath);
@@ -400,11 +424,11 @@ public static class Program
         {
             var record = ReadTextPxdRecord(descriptorLines, i);
 
-            if (record.lenght != 0)
+            if (record.length != 0)
             {
                 string binPath = $"{Path.GetDirectoryName(descriptorPath)}\\{binFilePrefix}{part}";
                 PxdHeader header =
-                    ReadPxdFileHeader(binPath, ReadFileFromTo(binPath, record.offset, record.lenght));
+                    ReadPxdFileHeader(binPath, ReadFileFromTo(binPath, record.offset, record.length));
                 if (part.Length > 0 && records.Count > 0 && record.offset == 0)
                 {
                     // switch to B binary file
@@ -434,7 +458,7 @@ public static class Program
 
                 foreach (var path in pxdFilesPaths)
                 {
-                    Console.WriteLine($"Process PXD file: {path}");
+                    Console.WriteLine($"Processing PXD file: {path}");
                     ProcessSinglePxdFile(path, pxd32Lib);
                 }
 
@@ -445,7 +469,7 @@ public static class Program
 
         foreach (var path in sclPaths)
         {
-            Console.WriteLine($"Process SCL file: {path}");
+            Console.WriteLine($"Processing SCL file: {path}");
             SclToWav(path);
         }
 
@@ -457,7 +481,7 @@ public static class Program
             {
                 foreach (var path in pxdFilesHeaderMultiWithBinaryInfPaths)
                 {
-                    Console.WriteLine($"Process MultiPXD binary header file (text): {path}");
+                    Console.WriteLine($"Processing MultiPXD binary header file (text): {path}");
                     try
                     {
                         ProcessMultiWithBinaryInf(path, lib);
@@ -474,7 +498,7 @@ public static class Program
             {
                 foreach (var path in pxdFilesHeaderMultiWithTextInfPaths)
                 {
-                    Console.WriteLine($"Process MultiPXD text header file (text): {path}");
+                    Console.WriteLine($"Processing MultiPXD text header file (text): {path}");
                     try
                     {
                         ProcessMultiWithTextInf(path, lib);
@@ -543,7 +567,7 @@ public static class Program
             var length = (int) new FileInfo(tmpPath).Length;
             if (length == 0)
             {
-                throw new Exception("raw wav file is empty, looks like file conversion was failed");
+                throw new Exception("Raw wav file is empty, looks like the file conversion has failed");
             }
 
             var riffSize = length + 0x24;
@@ -576,7 +600,7 @@ public static class Program
             Debug.WriteLine(e.ToString());
             wavStream?.Close();
             wavWriter?.Close();
-            Console.WriteLine("Couldn't convert raw data to wav. Perhaps .wav provided path is invalid?");
+            Console.WriteLine("Couldn't convert raw data to wav. Perhaps the provided .wav path is invalid?");
             File.Delete(wavFullPath);
         }
         finally
