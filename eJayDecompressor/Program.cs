@@ -16,7 +16,9 @@ public static class Program
         Console.WriteLine(" / -_) || / _` | || | |) / -_) _/ _ \\ '  \\| '_ \\ '_/ -_|_-<_-</ _ \\ '_|");
         Console.WriteLine(" \\___|\\__/\\__,_|\\_, |___/\\___\\__\\___/_|_|_| .__/_| \\___/__/__/\\___/_|");
         Console.WriteLine("                |__/                      |_|\n");
+        Console.WriteLine("Version 1.3");
         Console.ResetColor();
+        
         
         if (args.Length < 1)
         {
