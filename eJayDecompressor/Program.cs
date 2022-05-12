@@ -361,7 +361,7 @@ public static class Program
             Directory.CreateDirectory(dir);
             var outputFile = $"{dir}\\{filenameWithoutBadChars}.wav";
 
-            for (var i = 0; outputFiles.Contains(outputFile.ToLower()) || i > 10; i++)
+            for (var i = 0; outputFiles.Contains(outputFile.ToLower()) && i < 10; i++)
             {
                 outputFile = outputFile[..^4] + "_.wav";
             }
