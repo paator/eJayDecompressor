@@ -7,7 +7,7 @@ Small console application used for converting eJay music files to WAV files.
 Converter calls .dll external methods used for unpacking PXD to raw binary data (stored in a temporary file). The new WAV file is created with appropriate values (see  [WAVE PCM format specification](http://soundfile.sapp.org/doc/WaveFormat) ), then raw binary data is copied from .tmp file.
 ## Usage:
 Application uses .NET 6.0 x86 (32 bits). It also uses pxd32d5_d4.dll (old single .pxd files) and eJ_Tool.dll (for MultiPXD packages) which needs to be located in the same folder as compiled .exe. You can find .dll file inside of your eJay installation directories.
-Compile with MSBuild.exe or Visual Studio.
+Compile with MSBuild.exe or Visual Studio. You will need .NET 6.0 x86 runtime installed in order to run compiled .exe.
 
 If you want to convert only one file, run compiled program with one argument as follows:
 ```
